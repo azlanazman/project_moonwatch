@@ -1,0 +1,21 @@
+# ---------------------------------------------------------------------------
+# Core application
+# ---------------------------------------------------------------------------
+fastapi==0.111.0          # web framework
+uvicorn[standard]==0.29.0 # ASGI server (includes websockets + httptools)
+psycopg2-binary==2.9.9    # PostgreSQL driver (binary = no libpq compile needed)
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry SDK — installed now, wired up in Phase 2
+# enterprise: pinning all OTel packages to the same minor avoids subtle
+# version-skew bugs that are hard to diagnose in distributed traces.
+# ---------------------------------------------------------------------------
+opentelemetry-sdk==1.24.0
+opentelemetry-api==1.24.0
+
+# OTel instrumentation packages (auto-patch FastAPI + requests + psycopg2)
+opentelemetry-instrumentation-fastapi==0.45b0
+opentelemetry-instrumentation-psycopg2==0.45b0
+
+# OTLP exporter — sends traces/metrics/logs to the OTel Collector over gRPC
+opentelemetry-exporter-otlp==1.24.0

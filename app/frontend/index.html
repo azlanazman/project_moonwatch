@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OTel Learning Lab</title>
+  <style>
+    body { font-family: monospace; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #0d1117; color: #c9d1d9; }
+    h1   { color: #58a6ff; }
+    pre  { background: #161b22; padding: 16px; border-radius: 6px; overflow-x: auto; }
+    button { background: #238636; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; margin: 4px; }
+    button:hover { background: #2ea043; }
+    #output { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>OTel Learning Lab</h1>
+  <p>Phase 1 — App Stack</p>
+
+  <button onclick="callApi('/api/health')">GET /health</button>
+  <button onclick="callApi('/api/items')">GET /items</button>
+
+  <div id="output"><pre>Click a button to call the API...</pre></div>
+
+  <script>
+    async function callApi(path) {
+      document.getElementById('output').innerHTML = '<pre>Loading...</pre>';
+      try {
+        const res  = await fetch(path);
+        const data = await res.json();
+        document.getElementById('output').innerHTML =
+          '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+      } catch (err) {
+        document.getElementById('output').innerHTML =
+          '<pre style="color:#f85149">Error: ' + err.message + '</pre>';
+      }
+    }
+  </script>
+</body>
+</html>

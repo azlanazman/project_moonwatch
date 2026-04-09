@@ -1,0 +1,131 @@
+# ===========================================================================
+# OTel Learning Lab — Docker Compose
+#
+# Services:
+#   postgres   – PostgreSQL 15, internal only (port not exposed to host)
+#   backend    – FastAPI on port 8000, internal only
+#   frontend   – NGINX on port 80, exposed to host
+#
+# Networks:
+#   app-net    – bridges postgres ↔ backend ↔ frontend
+#   otel-net   – reserved for Phase 2: OTel Collector + backends
+#               (all app services join it now so Phase 2 requires no
+#                changes to this file)
+#
+# enterprise: using named networks instead of the default bridge mirrors
+# the network segmentation you'd find in a production k8s cluster
+# (separate namespaces / NetworkPolicies per concern).
+# ===========================================================================
+
+services:
+
+  # -------------------------------------------------------------------------
+  # PostgreSQL 15
+  # -------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine           # alpine = smaller image, same engine
+    container_name: otellab-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-otellab}
+      POSTGRES_USER:     ${DB_USER:-otel}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-otelpass}
+    volumes:
+      # Named volume persists data across `docker compose down` / `up` cycles.
+      # enterprise: in production this maps to a PVC (Kubernetes) or an EBS
+      # volume (AWS).
+      - postgres_data:/var/lib/postgresql/data
+      # Init scripts: Docker runs every *.sql file here once on first start.
+      - ./app/db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - app-net
+    healthcheck:
+      # pg_isready exits 0 only when postgres is accepting connections.
+      # The backend's depends_on.condition uses this to delay startup.
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-otel} -d ${DB_NAME:-otellab}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # -------------------------------------------------------------------------
+  # FastAPI backend
+  # -------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./app/backend
+      dockerfile: Dockerfile
+    container_name: otellab-backend
+    restart: unless-stopped
+    environment:
+      DB_HOST:     postgres
+      DB_PORT:     5432
+      DB_NAME:     ${DB_NAME:-otellab}
+      DB_USER:     ${DB_USER:-otel}
+      DB_PASSWORD: ${DB_PASSWORD:-otelpass}
+      # Placeholder env vars for Phase 2 OTel SDK — set but ignored for now
+      OTEL_SERVICE_NAME:           otellab-backend
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      postgres:
+        condition: service_healthy   # wait until postgres passes its healthcheck
+    networks:
+      - app-net
+      - otel-net   # joined now so Phase 2 only adds the collector service
+    healthcheck:
+      # Call /health on the backend; curl exits non-zero on HTTP errors.
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # -------------------------------------------------------------------------
+  # NGINX frontend (reverse proxy + static file server)
+  # -------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./app/frontend
+      dockerfile: Dockerfile
+    container_name: otellab-frontend
+    restart: unless-stopped
+    ports:
+      # Expose port 80 to the host so you can open http://172.16.0.50
+      # enterprise: in production NGINX (or an ingress controller) is the
+      # only service with a public-facing port — everything else is internal.
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy   # wait until backend passes its healthcheck
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/nginx-health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  app-net:
+    # Default bridge driver; Docker assigns a subnet automatically.
+    # enterprise: equivalent to a VPC subnet or k8s namespace network.
+    driver: bridge
+
+  otel-net:
+    # Separate network for observability traffic.
+    # Keeping it isolated means noisy telemetry cannot starve app traffic.
+    # enterprise: mirrors the "management plane" / "data plane" separation
+    # used in enterprise network design.
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_data:
+    # Docker manages the volume lifecycle.
+    # Remove with `docker volume rm otellab_postgres_data` to wipe the DB.
